@@ -84,13 +84,18 @@ func reader(conn *websocket.Conn) {
 				msgToJoiner, _ := json.Marshal(&RoomResponse{Channel: "error", Res: "The room code you entered is invalid"})
 				conn.WriteMessage(messageType, msgToJoiner)
 			} else {
-				joinRoom(data.RoomCode, Player{Name: data.Res, Socket: conn})
+				if room.Joiner.Name == "" {
+					joinRoom(data.RoomCode, Player{Name: data.Res, Socket: conn})
 
-				msgToJoiner, _ := json.Marshal(&RoomResponse{Channel: "game-ready", Res: room.Creator.Name, Dimension: room.Dimension, IsCreator: false})
-				conn.WriteMessage(messageType, msgToJoiner)
+					msgToJoiner, _ := json.Marshal(&RoomResponse{Channel: "game-ready", Res: room.Creator.Name, Dimension: room.Dimension, IsCreator: false})
+					conn.WriteMessage(messageType, msgToJoiner)
 
-				msgToCreator, _ := json.Marshal(&RoomResponse{Channel: "game-ready", Res: data.Res, IsCreator: true})
-				room.Creator.Socket.WriteMessage(messageType, msgToCreator)
+					msgToCreator, _ := json.Marshal(&RoomResponse{Channel: "game-ready", Res: data.Res, IsCreator: true})
+					room.Creator.Socket.WriteMessage(messageType, msgToCreator)
+				} else {
+					msgToJoiner, _ := json.Marshal(&RoomResponse{Channel: "error", Res: "Room is already full"})
+					conn.WriteMessage(messageType, msgToJoiner)
+				}
 			}
 
 			fmt.Println("Game is ready")
