@@ -82,7 +82,7 @@ func reader(conn *websocket.Conn) {
 			msgToJoiner, _ := json.Marshal(&RoomResponse{Channel: "game-ready", Res: room.Creator.Name, Dimension: room.Dimension, IsCreator: false})
 			conn.WriteMessage(messageType, msgToJoiner)
 
-			msgToCreator, _ := json.Marshal(&RoomResponse{Channel: "game-ready", Res: room.Joiner.Name, IsCreator: true})
+			msgToCreator, _ := json.Marshal(&RoomResponse{Channel: "game-ready", Res: data.Res, IsCreator: true})
 			room.Creator.Socket.WriteMessage(messageType, msgToCreator)
 
 			fmt.Println("Game is ready")
