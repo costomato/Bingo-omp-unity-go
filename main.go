@@ -121,7 +121,7 @@ func reader(conn *websocket.Conn) {
 
 		case "exit-room":
 			room, _ := getRoom(data.RoomCode)
-			delete(rooms, data.Channel)
+			delete(rooms, data.RoomCode)
 			msg, _ := json.Marshal(&RoomResponse{Channel: "exit-room"})
 			if data.IsCreator {
 				room.Creator.Socket.WriteMessage(messageType, msg)
