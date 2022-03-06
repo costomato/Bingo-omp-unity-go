@@ -41,8 +41,11 @@ func joinRoom(roomCode string, joiner Player) {
 		rooms[roomCode] = entry
 	}
 }
-func getRoom(roomCode string) Room {
-	return rooms[roomCode]
+func getRoom(roomCode string) (Room, bool) {
+	if _, ok := rooms[roomCode]; ok {
+		return rooms[roomCode], false
+	}
+	return Room{}, true
 }
 
 var upgrader = websocket.Upgrader{}
@@ -76,19 +79,24 @@ func reader(conn *websocket.Conn) {
 
 		case "join-room":
 			fmt.Println("Creating room...")
-			room := getRoom(data.RoomCode)
-			joinRoom(data.RoomCode, Player{Name: data.Res, Socket: conn})
+			room, error := getRoom(data.RoomCode)
+			if error {
+				msgToJoiner, _ := json.Marshal(&RoomResponse{Channel: "error", Res: "The room code you entered is invalid"})
+				conn.WriteMessage(messageType, msgToJoiner)
+			} else {
+				joinRoom(data.RoomCode, Player{Name: data.Res, Socket: conn})
 
-			msgToJoiner, _ := json.Marshal(&RoomResponse{Channel: "game-ready", Res: room.Creator.Name, Dimension: room.Dimension, IsCreator: false})
-			conn.WriteMessage(messageType, msgToJoiner)
+				msgToJoiner, _ := json.Marshal(&RoomResponse{Channel: "game-ready", Res: room.Creator.Name, Dimension: room.Dimension, IsCreator: false})
+				conn.WriteMessage(messageType, msgToJoiner)
 
-			msgToCreator, _ := json.Marshal(&RoomResponse{Channel: "game-ready", Res: data.Res, IsCreator: true})
-			room.Creator.Socket.WriteMessage(messageType, msgToCreator)
+				msgToCreator, _ := json.Marshal(&RoomResponse{Channel: "game-ready", Res: data.Res, IsCreator: true})
+				room.Creator.Socket.WriteMessage(messageType, msgToCreator)
+			}
 
 			fmt.Println("Game is ready")
 
 		case "game-on":
-			room := getRoom(data.RoomCode)
+			room, _ := getRoom(data.RoomCode)
 			msg, _ := json.Marshal(&RoomResponse{Channel: "game-on", Move: data.Move})
 			if data.IsCreator {
 				room.Creator.Socket.WriteMessage(messageType, msg)
@@ -97,7 +105,7 @@ func reader(conn *websocket.Conn) {
 			}
 
 		case "win-claim":
-			room := getRoom(data.RoomCode)
+			room, _ := getRoom(data.RoomCode)
 			msg, _ := json.Marshal(&RoomResponse{Channel: "win-claim"})
 			if data.IsCreator {
 				room.Creator.Socket.WriteMessage(messageType, msg)
@@ -106,10 +114,20 @@ func reader(conn *websocket.Conn) {
 			}
 
 		case "retry":
-			room := getRoom(data.RoomCode)
+			room, _ := getRoom(data.RoomCode)
 			msg, _ := json.Marshal(&RoomResponse{Channel: "retry", IsCreator: data.IsCreator})
 			room.Creator.Socket.WriteMessage(messageType, msg)
 			room.Joiner.Socket.WriteMessage(messageType, msg)
+
+		case "exit-room":
+			room, _ := getRoom(data.RoomCode)
+			delete(rooms, data.Channel)
+			msg, _ := json.Marshal(&RoomResponse{Channel: "exit-room"})
+			if data.IsCreator {
+				room.Creator.Socket.WriteMessage(messageType, msg)
+			} else {
+				room.Joiner.Socket.WriteMessage(messageType, msg)
+			}
 
 		default:
 			fmt.Println("Channel not implemented")
