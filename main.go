@@ -12,12 +12,13 @@ import (
 )
 
 type RoomResponse struct {
-	Channel   string `json:"channel"`
-	Res       string `json:"res" default:""`
-	RoomCode  string `json:"roomCode" default:""`
-	Dimension int    `json:"dimension" default:"0"`
-	IsCreator bool   `json:"isCreator" default:"false"`
-	Move      int    `json:"move" default:"0"`
+	Channel    string `json:"channel"`
+	Res        string `json:"res" default:""`
+	RoomCode   string `json:"roomCode" default:""`
+	Dimension  int    `json:"dimension" default:"0"`
+	IsCreator  bool   `json:"isCreator" default:"false"`
+	Move       int    `json:"move" default:"0"`
+	AppVersion string `json:"appVersion" default:""`
 }
 
 type Player struct {
@@ -25,15 +26,16 @@ type Player struct {
 	Socket *websocket.Conn
 }
 type Room struct {
-	Creator   Player
-	Joiner    Player
-	Dimension int
+	Creator    Player
+	Joiner     Player
+	Dimension  int
+	AppVersion string
 }
 
 var rooms = make(map[string]Room)
 
-func createRoom(roomCode string, creator Player, dimension int) {
-	rooms[roomCode] = Room{Creator: creator, Dimension: dimension}
+func createRoom(roomCode string, creator Player, dimension int, appVersion string) {
+	rooms[roomCode] = Room{Creator: creator, Dimension: dimension, AppVersion: appVersion}
 }
 func joinRoom(roomCode string, joiner Player) {
 	if entry, ok := rooms[roomCode]; ok {
@@ -70,9 +72,7 @@ func reader(conn *websocket.Conn) {
 			fmt.Println("Creating room...")
 			roomCode := util.GenerateRoomCode(5)
 
-			fmt.Println("Room code: ", roomCode)
-			fmt.Println("Creator: ", data.Res)
-			createRoom(roomCode, Player{Name: data.Res, Socket: conn}, data.Dimension)
+			createRoom(roomCode, Player{Name: data.Res, Socket: conn}, data.Dimension, data.AppVersion)
 
 			msg, _ := json.Marshal(&RoomResponse{Channel: "create-room", Res: roomCode, RoomCode: roomCode})
 			conn.WriteMessage(messageType, msg)
@@ -84,16 +84,21 @@ func reader(conn *websocket.Conn) {
 				msgToJoiner, _ := json.Marshal(&RoomResponse{Channel: "error", Res: "The room code you entered is invalid"})
 				conn.WriteMessage(messageType, msgToJoiner)
 			} else {
-				if room.Joiner.Name == "" {
-					joinRoom(data.RoomCode, Player{Name: data.Res, Socket: conn})
+				if room.AppVersion == data.AppVersion {
+					if room.Joiner.Name == "" {
+						joinRoom(data.RoomCode, Player{Name: data.Res, Socket: conn})
 
-					msgToJoiner, _ := json.Marshal(&RoomResponse{Channel: "game-ready", Res: room.Creator.Name, Dimension: room.Dimension, IsCreator: false})
-					conn.WriteMessage(messageType, msgToJoiner)
+						msgToJoiner, _ := json.Marshal(&RoomResponse{Channel: "game-ready", Res: room.Creator.Name, Dimension: room.Dimension, IsCreator: false})
+						conn.WriteMessage(messageType, msgToJoiner)
 
-					msgToCreator, _ := json.Marshal(&RoomResponse{Channel: "game-ready", Res: data.Res, IsCreator: true})
-					room.Creator.Socket.WriteMessage(messageType, msgToCreator)
+						msgToCreator, _ := json.Marshal(&RoomResponse{Channel: "game-ready", Res: data.Res, IsCreator: true})
+						room.Creator.Socket.WriteMessage(messageType, msgToCreator)
+					} else {
+						msgToJoiner, _ := json.Marshal(&RoomResponse{Channel: "error", Res: "Room is already full"})
+						conn.WriteMessage(messageType, msgToJoiner)
+					}
 				} else {
-					msgToJoiner, _ := json.Marshal(&RoomResponse{Channel: "error", Res: "Room is already full"})
+					msgToJoiner, _ := json.Marshal(&RoomResponse{Channel: "error", Res: "Room creator has a different version of Bingo. Please make sure both have the latest version."})
 					conn.WriteMessage(messageType, msgToJoiner)
 				}
 			}
@@ -120,9 +125,12 @@ func reader(conn *websocket.Conn) {
 
 		case "retry":
 			room, _ := getRoom(data.RoomCode)
-			msg, _ := json.Marshal(&RoomResponse{Channel: "retry", IsCreator: data.IsCreator})
-			room.Creator.Socket.WriteMessage(messageType, msg)
-			room.Joiner.Socket.WriteMessage(messageType, msg)
+			msg, _ := json.Marshal(&RoomResponse{Channel: "retry"})
+			if data.IsCreator {
+				room.Creator.Socket.WriteMessage(messageType, msg)
+			} else {
+				room.Joiner.Socket.WriteMessage(messageType, msg)
+			}
 
 		case "exit-room":
 			room, _ := getRoom(data.RoomCode)
