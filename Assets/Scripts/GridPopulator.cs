@@ -8,9 +8,15 @@ public class GridPopulator : MonoBehaviour
 
     private void Start()
     {
+        SetBingoGrid();
+    }
+
+    public static void SetBingoGrid()
+    {
         System.Random random = new System.Random();
         arrBoard = new int[,] { { 1, 2, 3, 4, 5 }, { 6, 7, 8, 9, 10 },
         { 11, 12, 13, 14, 15 }, { 16, 17, 18, 19, 20 }, { 21, 22, 23, 24, 25 } };
+        Color32 color = new Color32(255, 255, 255, 255);
 
         int lengthRow = arrBoard.GetLength(1);
         Button btn;
@@ -30,6 +36,7 @@ public class GridPopulator : MonoBehaviour
 
             btn = GameObject.Find($"{i0}{i1}").GetComponent<Button>();
             btn.GetComponentInChildren<TMP_Text>().text = $"{arrBoard[i0, i1]}";
+            btn.image.color = color;
         }
     }
 }

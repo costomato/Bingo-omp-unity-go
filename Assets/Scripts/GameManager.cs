@@ -10,12 +10,19 @@ public class GameManager : MonoBehaviour
 {
     [SerializeField] private TMP_InputField nameInput, roomCodeInput;
     [SerializeField] private TMP_Text alert;
-    private string roomCode, creatorName, joinerName, winner;
+    private TMP_Text gameStatus, players;
+    private Button retryButton;
+    private readonly Color32 markedColor = new Color32(78, 242, 245, 255);
+    private readonly Color32 myLastColor = new Color32(227, 145, 186, 255);
+    private readonly Color32 oppLastColor = new Color32(158, 232, 159, 255);
+    private Color32 retryColor = new Color32(241, 237, 203, 255);
+
+    private string roomCode, creatorName, joinerName, winner, lastMove;
     private bool amICreator, roomReady = false, isMyMove = false;
     private CheckWinner checkWinner;
     private readonly ConcurrentQueue<Action> _actions = new ConcurrentQueue<Action>();
-    private TMP_Text gameStatus;
     private int winners = 0;
+
 
     private static GameObject mainManagerInstance;
     private void Awake()
@@ -36,6 +43,7 @@ public class GameManager : MonoBehaviour
         public int dimension;
         public bool isCreator;
         public int move;
+        public string appVersion;
     }
 
     private WebSocket ws;
@@ -96,7 +104,6 @@ public class GameManager : MonoBehaviour
                             creatorName = $"{creatorName} (1)";
                             joinerName = $"{joinerName} (2)";
                         }
-                        TMP_Text players = GameObject.Find("Players").GetComponent<TMP_Text>();
                         players.text = $"Players:\n{creatorName} (You)\n{joinerName} (Joiner)";
                         gameStatus.text = "Game is ready\nYou move first";
                     }
@@ -111,6 +118,7 @@ public class GameManager : MonoBehaviour
                         SceneManager.LoadSceneAsync(1).completed += delegate
                         {
                             SetupGameScene();
+                            players.text += "\n" + joinerName + " (You)";
                             gameStatus.text = $"Game is ready\n{creatorName} moves first";
                         };
                     }
@@ -118,13 +126,18 @@ public class GameManager : MonoBehaviour
                 case "game-on":
                     gameStatus.text = $"Current move:\n{data.move}\nYour turn now";
 
+                    if (!lastMove.IsNullOrEmpty())
+                        GameObject.Find(lastMove).GetComponent<Button>().image.color = markedColor;
+
                     //searching the incoming move in two dimensional array using
                     //linear search algorithm
                     int[] ndx = checkWinner.GetIndex(data.move, GridPopulator.arrBoard);
                     GridPopulator.arrBoard[ndx[0], ndx[1]] = 0;
-                    GameObject.Find($"{ndx[0]}{ndx[1]}").GetComponent<Button>().GetComponentInChildren<TMP_Text>().text = "x";
-                    GameObject.Find($"{ndx[0]}{ndx[1]}").GetComponent<Button>().image.color = new Color32(78, 242, 245, 255);
+                    Button btn = GameObject.Find($"{ndx[0]}{ndx[1]}").GetComponent<Button>();
+                    btn.GetComponentInChildren<TMP_Text>().text = "x";
+                    btn.image.color = oppLastColor;
                     isMyMove = true;
+                    lastMove = $"{ndx[0]}{ndx[1]}";
 
                     SetBingoStatus();
                     break;
@@ -137,10 +150,17 @@ public class GameManager : MonoBehaviour
                     // checking for draw
                     if (winners > 1)
                         gameStatus.text = "Oh wait! It's a draw\nGame over";
+
+                    // showing retry button
+                    retryColor.a = 255;
+                    retryButton.image.color = retryColor;
+                    break;
+                case "retry":
+                    ResetGame(false, amICreator ? joinerName : creatorName);
                     break;
                 case "error":
                     // display some error
-                    //UnityEditor.EditorUtility.DisplayDialog("Error", data.res, "Ok");
+                    // UnityEditor.EditorUtility.DisplayDialog("Error", data.res, "Ok");
                     alert.text = data.res;
                     alert.alpha = 1f;
                     break;
@@ -182,6 +202,7 @@ public class GameManager : MonoBehaviour
             data.channel = "create-room";
             data.res = creatorName;
             data.dimension = 5;
+            data.appVersion = Application.version;
             ws.Send(JsonUtility.ToJson(data));
         }
     }
@@ -213,6 +234,7 @@ public class GameManager : MonoBehaviour
             data.channel = "join-room";
             data.res = joinerName;
             data.roomCode = roomCode;
+            data.appVersion = Application.version;
             ws.Send(JsonUtility.ToJson(data));
         }
     }
@@ -221,10 +243,20 @@ public class GameManager : MonoBehaviour
     {
         gameStatus = GameObject.Find("GameStatus").GetComponent<TMP_Text>();
         GameObject.Find("RoomCode").GetComponent<TMP_Text>().text = $"Room code: {roomCode}";
-        TMP_Text players = GameObject.Find("Players").GetComponent<TMP_Text>();
-        players.text += "\n" + creatorName + (amICreator ? " (You)" : " (Joiner)");
-        if (!joinerName.IsNullOrEmpty())
-            players.text += "\n" + joinerName + (amICreator ? " (Joiner)" : " (You)");
+        players = GameObject.Find("Players").GetComponent<TMP_Text>();
+        players.text += "\n" + creatorName + (amICreator ? " (You)" : " (Creator)");
+
+        retryButton = GameObject.Find("RetryBtn").GetComponent<Button>();
+        retryButton.onClick.AddListener(delegate
+        {
+            ResetGame(true, amICreator ? creatorName : joinerName);
+
+            RoomResponse data = default;
+            data.channel = "retry";
+            data.roomCode = roomCode;
+            data.isCreator = !amICreator;
+            ws.Send(JsonUtility.ToJson(data));
+        });
 
         for (int i = 0; i < 5; i++)
         {
@@ -247,8 +279,12 @@ public class GameManager : MonoBehaviour
 
         if (isMyMove && winner.IsNullOrEmpty() && roomReady && GridPopulator.arrBoard[x, y] != 0)
         {
+            if (!lastMove.IsNullOrEmpty())
+                GameObject.Find(lastMove).GetComponent<Button>().image.color = markedColor;
+
+            lastMove = button.name;
             button.GetComponentInChildren<TMP_Text>().text = "x";
-            button.image.color = new Color32(78, 242, 245, 255);
+            button.image.color = myLastColor;
 
             RoomResponse data = default;
             data.channel = "game-on";
@@ -288,6 +324,31 @@ public class GameManager : MonoBehaviour
 
             if (winners > 1)
                 gameStatus.text = "Oh wait! It's a draw\nGame over";
+
+            // showing retry button
+            retryColor.a = 255;
+            retryButton.image.color = retryColor;
+        }
+    }
+
+    private void ResetGame(bool whoseTurn, string player)
+    {
+        if (!winner.IsNullOrEmpty())
+        {
+            GridPopulator.SetBingoGrid();
+
+            isMyMove = whoseTurn;
+            winner = "";
+            lastMove = "";
+            winners = 0;
+            gameStatus.text = $"Game is ready\n{(whoseTurn ? "You move" : player + " moves")} first";
+
+            for (int i = 0; i < 5; i++)
+                GameObject.Find($"MarkT{i}").GetComponent<TMP_Text>().alpha = 0f;
+
+            // hide retry button
+            retryColor.a = 0;
+            retryButton.image.color = retryColor;
         }
     }
 

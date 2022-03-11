@@ -10,6 +10,9 @@ I have used Websocket-sharp for handling websockets in C#. Logics such as checki
 
 Developers who wanna contribute are welcome!
 
+## This game is available on google play store.
+### [Click here to view](https://play.google.com/store/apps/details?id=com.Flyprosper.Bingo)
+
 # How to play:
 
 1. This is a two player online version of Bingo game.
