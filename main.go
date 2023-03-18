@@ -63,7 +63,6 @@ func reader(conn *websocket.Conn) {
 			log.Println(err)
 			return
 		}
-
 		var data RoomResponse
 		json.Unmarshal([]byte(p), &data)
 
@@ -148,8 +147,6 @@ func reader(conn *websocket.Conn) {
 	}
 }
 func wsEndpoint(w http.ResponseWriter, r *http.Request) {
-	upgrader.CheckOrigin = func(r *http.Request) bool { return true }
-
 	ws, err := upgrader.Upgrade(w, r, nil)
 	if err != nil {
 		log.Println(err)
@@ -164,11 +161,25 @@ func setupRoutes() {
 }
 
 func main() {
+	upgrader = websocket.Upgrader{
+		CheckOrigin: func(r *http.Request) bool {
+			return true
+		},
+	}
+
 	setupRoutes()
 	port := os.Getenv("PORT")
 	if port == "" {
 		port = "9000"
 	}
+	corsHandler := func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("Access-Control-Allow-Origin", "*")
+			w.Header().Set("Access-Control-Allow-Headers", "Origin, X-Requested-With, Content-Type, Accept")
+			w.Header().Set("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+			next.ServeHTTP(w, r)
+		})
+	}
+	log.Fatal(http.ListenAndServe(":"+port, corsHandler(http.DefaultServeMux)))
 	fmt.Println("Server listening on port " + port + " >:)")
-	log.Fatal(http.ListenAndServe(":"+port, nil))
 }
